@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"log"
 	"os"
 	"os/exec"
@@ -193,7 +194,7 @@ func (c *ServeCmd) Run(ctx context.Context) error {
 			line := scanner.Text()
 			log.Printf("pipeClient: %s", line)
 		}
-		if err := scanner.Err(); err != nil {
+		if err := scanner.Err(); err != nil && !errors.Is(err, fs.ErrClosed) {
 			log.Printf("failed to scan pipeClient stderr: %s", err)
 		}
 	}()

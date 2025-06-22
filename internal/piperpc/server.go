@@ -36,6 +36,9 @@ func (c *Server) Run(ctx context.Context, in io.Reader, out io.WriteCloser) erro
 		log.Print("server: reading")
 		reqMsg, _, err := r.Read(ctx)
 		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
 			return err
 		}
 		log.Printf("server: read message, reqMsg=%+v", reqMsg)
