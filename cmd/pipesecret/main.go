@@ -68,9 +68,9 @@ func (c *RemoteCmd) Run(ctx context.Context) error {
 }
 
 type ServeCmd struct {
-	SSH     string `required:"" default:"ssh" env:"PIPESECRET_SSH" help:"ssh command"`
-	Host    string `required:"" env:"PIPESECRET_HOST" help:"ssh destination hostname"`
-	Command string `required:"" env:"PIPESECRET_COMMAND" help:"command and arguements to execute on the ssh destination host"`
+	SSH     string `group:"ssh" required:"" default:"ssh" env:"PIPESECRET_SSH" help:"ssh command"`
+	Host    string `group:"ssh" required:"" env:"PIPESECRET_HOST" help:"ssh destination hostname"`
+	Command string `group:"ssh" required:"" env:"PIPESECRET_COMMAND" help:"command and arguements to execute on the ssh destination host"`
 	Op      string `required:"" env:"PIPESECRET_OP" help:"path to 1Password CLI"`
 }
 
