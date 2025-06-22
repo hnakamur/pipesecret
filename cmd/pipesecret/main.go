@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"os/signal"
 	"time"
 
 	"github.com/alecthomas/kong"
@@ -147,6 +148,11 @@ type ServeCmd struct {
 }
 
 func (c *ServeCmd) Run(ctx context.Context) error {
+	// ctx2, stop := signal.NotifyContext(ctx, os.Interrupt)
+	// defer stop()
+
+	// cmd := exec.CommandContext(ctx2, "ssh", "ggear", "/home/hnakamur/.local/bin/pipesecret remote-serve")
+
 	cmd := exec.Command("ssh", "ggear", "/home/hnakamur/.local/bin/pipesecret remote-serve")
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -163,6 +169,23 @@ func (c *ServeCmd) Run(ctx context.Context) error {
 	if err := cmd.Start(); err != nil {
 		return err
 	}
+	log.Printf("ssh pid=%d", cmd.Process.Pid)
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	exitC := make(chan os.Signal, 1)
+	signal.Notify(exitC, os.Interrupt)
+	go func() {
+		<-exitC
+		log.Printf("got interrupt signal")
+		if err := cmd.Process.Kill(); err != nil {
+			log.Printf("failed to kill remote process: %s", err)
+		} else {
+			log.Printf("killed remote process")
+		}
+		cancel()
+	}()
 
 	go func() {
 		scanner := bufio.NewScanner(stderr)
@@ -191,8 +214,8 @@ func (c *ServeCmd) Run(ctx context.Context) error {
 				return nil, xerrors.Errorf("%w: %s", jsonrpc2.ErrInvalidRequest, err)
 			}
 			return result, nil
-		case "howdy":
-			return "hohoho", nil
+		case "heartbeat":
+			return "ack", nil
 		default:
 			return nil, jsonrpc2.ErrNotHandled
 		}
@@ -200,13 +223,19 @@ func (c *ServeCmd) Run(ctx context.Context) error {
 
 	server := piperpc.NewServer(jsonrpc2.RawFramer(), jsonrpc2.HandlerFunc(handler))
 	localErr := server.Run(ctx, stdout, stdin)
-	remoteErr := cmd.Wait()
 	if localErr != nil {
 		log.Printf("localErr=%v", localErr)
+	} else {
+		log.Printf("after server Run")
 	}
+
+	remoteErr := cmd.Wait()
 	if remoteErr != nil {
 		log.Printf("remoteErr=%v", remoteErr)
+	} else {
+		log.Printf("after cmd.Wait")
 	}
+
 	if localErr != nil || remoteErr != nil {
 		return errors.Join(localErr, remoteErr)
 	}

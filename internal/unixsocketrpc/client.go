@@ -3,6 +3,7 @@ package unixsocketrpc
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
 	"time"
 
@@ -32,6 +33,7 @@ func (c *Client) Close() error {
 
 func (c *Client) CallSync(ctx context.Context, method string, params any) (any, jsonrpc2.ID, error) {
 	call := c.conn.Call(ctx, method, params)
+	log.Printf("client: created a call, id=%v", call.ID())
 	var result any
 	if err := call.Await(ctx, &result); err != nil {
 		return nil, jsonrpc2.ID{}, fmt.Errorf("failed to wait result from unix socket: %s", err)

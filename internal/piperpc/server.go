@@ -22,6 +22,14 @@ func NewServer(framer jsonrpc2.Framer, handler jsonrpc2.Handler) *Server {
 }
 
 func (c *Server) Run(ctx context.Context, in io.Reader, out io.WriteCloser) error {
+	defer func() {
+		if err := out.Close(); err != nil {
+			log.Printf("failed close server writer: %s", err)
+		} else {
+			log.Printf("server closed writer")
+		}
+	}()
+
 	r := c.framer.Reader(in)
 	w := c.framer.Writer(out)
 	for {
@@ -49,12 +57,3 @@ func (c *Server) Run(ctx context.Context, in io.Reader, out io.WriteCloser) erro
 		log.Printf("server: sent message, respMsg=%+v", respMsg)
 	}
 }
-
-// func (c *Server) Handle(ctx context.Context, req *jsonrpc2.Request) (any, error) {
-// 	switch req.Method {
-// 	case "heartbeat":
-// 		return "ack", nil
-// 	default:
-// 		return nil, jsonrpc2.ErrNotHandled
-// 	}
-// }
