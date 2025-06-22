@@ -36,7 +36,9 @@ func (c *Client) CallSync(ctx context.Context, method string, params any) (any, 
 	log.Printf("client: created a call, id=%v", call.ID())
 	var result any
 	if err := call.Await(ctx, &result); err != nil {
+		log.Printf("await error=%v", err)
 		return nil, jsonrpc2.ID{}, fmt.Errorf("failed to wait result from unix socket: %s", err)
 	}
+	log.Printf("client: after await, id=%v, result=%v", call.ID(), result)
 	return result, call.ID(), nil
 }

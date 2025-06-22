@@ -90,7 +90,12 @@ func (s *RemoteServer) runUnixSocketServer(ctx context.Context) error {
 			case <-ctx.Done():
 				return nil, ctx.Err()
 			case result := <-resultC:
-				return result.Result, result.Error
+				log.Printf("unix socket server received result=%#v, result.Result=%s", result, string(result.Result))
+				if result.Error != nil {
+					log.Printf("result.Error=%v", result.Error)
+					// return result.Result, result.Error
+				}
+				return result.Result, nil
 			}
 		default:
 			return nil, jsonrpc2.ErrNotHandled
@@ -161,6 +166,7 @@ func (s *RemoteServer) runPipeClient(ctx context.Context, out io.WriteCloser, in
 			log.Printf("client: received resp=%#v", resp)
 			resp.ID = origReqID
 			req.resultC <- resp
+			log.Printf("client: sent response to resultC")
 			// if resp.Result != nil {
 			// 	var result string
 			// 	if err := json.Unmarshal(resp.Result, &result); err != nil {
