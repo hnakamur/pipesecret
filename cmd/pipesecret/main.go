@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io/fs"
 	"log"
 	"os"
@@ -32,12 +31,8 @@ var cli struct {
 	Serve       ServeCmd       `cmd:"" help:"controller server subcommand."`
 }
 
-const defaultSocketPathEnvName = "PIPESECRET_SOCKET"
-
-var defaultSocketPath string
-
 type RemoteServeCmd struct {
-	Socket    string        `group:"listen" required:"" default:"${default_socket_path}" env:"PIPESECRET_SOCKET" help:"unix socket path"`
+	Socket    string        `group:"listen" required:"" default:"${default_socket_path}" help:"unix socket path"`
 	Heartbeat time.Duration `group:"pipe rpc" default:"5s" help:"heartbeat interval"`
 }
 
@@ -85,13 +80,12 @@ func (c *RemoteCmd) Run(ctx context.Context) error {
 type ServeCmd struct {
 	SSH     string `group:"pipe rpc" required:"" default:"ssh" env:"PIPESECRET_SSH" help:"ssh command"`
 	Host    string `group:"pipe rpc" required:"" env:"PIPESECRET_HOST" help:"destination hostname"`
-	Command string `group:"pipe rpc" required:"" default:"${default_command}" env:"PIPESECRET_COMMAND" help:"command and arguements to execute on the destination host"`
+	Command string `group:"pipe rpc" required:"" env:"PIPESECRET_COMMAND" help:"command and arguements to execute on the destination host"`
 	Op      string `required:"" env:"PIPESECRET_OP" help:"path to 1Password CLI"`
 }
 
 func (c *ServeCmd) Run(ctx context.Context) error {
 	cmd := exec.Command(c.SSH, c.Host, c.Command)
-	cmd.Env = append(cmd.Environ(), fmt.Sprintf("%s=%s", defaultSocketPathEnvName, defaultSocketPath))
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return err
@@ -107,7 +101,6 @@ func (c *ServeCmd) Run(ctx context.Context) error {
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	log.Printf("ssh pid=%d", cmd.Process.Pid)
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -181,15 +174,8 @@ func (c *ServeCmd) Run(ctx context.Context) error {
 }
 
 func main() {
-	defaultSocketPath = os.Getenv(defaultSocketPathEnvName)
-	if defaultSocketPath == "" {
-		defaultSocketPath = "/tmp/pipesecret.sock"
-	}
-	log.Printf("pipesecret defaultSocketPath=%s", defaultSocketPath)
-
 	ctx := kong.Parse(&cli, kong.Vars{
-		"default_socket_path": defaultSocketPath,
-		"default_command":     os.Getenv("PIPESECRET_COMMAND"),
+		"default_socket_path": "/tmp/pipesecret.sock",
 	})
 	// kong.BindTo is needed to bind a context.Context value.
 	// See https://github.com/alecthomas/kong/issues/48
