@@ -29,12 +29,12 @@ type secretQueryRequst struct {
 	resultC chan *jsonrpc2.Response
 }
 
-func NewRemoteServer(socketPath string) *RemoteServer {
+func NewRemoteServer(socketPath string, heartbeatInterval time.Duration) *RemoteServer {
 	return &RemoteServer{
 		socketPath:        socketPath,
 		framer:            jsonrpc2.RawFramer(),
 		requestC:          make(chan secretQueryRequst, 1),
-		heartbeatInterval: 5 * time.Second,
+		heartbeatInterval: heartbeatInterval,
 	}
 }
 

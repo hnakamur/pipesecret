@@ -24,11 +24,12 @@ import (
 const shutdownMethod = "shutdown"
 
 type RemoteServeCmd struct {
-	Socket string `required:"" default:"/tmp/pipesecret.sock" help:"unix socket path"`
+	Socket    string        `group:"listen" required:"" default:"/tmp/pipesecret.sock" help:"unix socket path"`
+	Heartbeat time.Duration `group:"pipe rpc" default:"5s" help:"heartbeat interval"`
 }
 
 func (c *RemoteServeCmd) Run(ctx context.Context) error {
-	s := rpc.NewRemoteServer(c.Socket)
+	s := rpc.NewRemoteServer(c.Socket, c.Heartbeat)
 	if err := s.Run(ctx, os.Stdout, os.Stdin); err != nil {
 		return err
 	}
@@ -68,9 +69,9 @@ func (c *RemoteCmd) Run(ctx context.Context) error {
 }
 
 type ServeCmd struct {
-	SSH     string `group:"ssh" required:"" default:"ssh" env:"PIPESECRET_SSH" help:"ssh command"`
-	Host    string `group:"ssh" required:"" env:"PIPESECRET_HOST" help:"ssh destination hostname"`
-	Command string `group:"ssh" required:"" env:"PIPESECRET_COMMAND" help:"command and arguements to execute on the ssh destination host"`
+	SSH     string `group:"pipe rpc" required:"" default:"ssh" env:"PIPESECRET_SSH" help:"ssh command"`
+	Host    string `group:"pipe rpc" required:"" env:"PIPESECRET_HOST" help:"destination hostname"`
+	Command string `group:"pipe rpc" required:"" env:"PIPESECRET_COMMAND" help:"command and arguements to execute on the destination host"`
 	Op      string `required:"" env:"PIPESECRET_OP" help:"path to 1Password CLI"`
 }
 
