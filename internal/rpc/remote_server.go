@@ -75,6 +75,9 @@ func (s *RemoteServer) runUnixSocketServer(ctx context.Context) error {
 	}
 
 	handler := func(ctx context.Context, req *jsonrpc2.Request) (any, error) {
+		defer func() {
+			log.Printf("remoteServer handler exiting, method=%s", req.Method)
+		}()
 		switch req.Method {
 		case "getQueryItem":
 			var params GetQueryItemRequestParams
@@ -88,14 +91,14 @@ func (s *RemoteServer) runUnixSocketServer(ctx context.Context) error {
 			}
 			select {
 			case <-ctx.Done():
+				log.Printf("unixSocketServer ctx.Done, ctx.Err=%v", ctx.Err())
 				return nil, ctx.Err()
 			case result := <-resultC:
 				log.Printf("unix socket server received result=%#v, result.Result=%s", result, string(result.Result))
 				if result.Error != nil {
 					log.Printf("result.Error=%v", result.Error)
-					// return result.Result, result.Error
 				}
-				return result.Result, nil
+				return result.Result, result.Error
 			}
 		default:
 			return nil, jsonrpc2.ErrNotHandled
@@ -137,23 +140,23 @@ func (s *RemoteServer) runPipeClient(ctx context.Context, out io.WriteCloser, in
 				return errors.New("expected a jsonrpc2 response")
 			}
 			log.Printf("client: received heartbeat resp=%#v", resp)
-		case req := <-s.requestC:
-			origReqID := req.request.ID
+		case origReq := <-s.requestC:
+			origReqID := origReq.request.ID
 			reqID, err := uuid.NewRandom()
 			if err != nil {
 				return err
 			}
-			req.request.ID = jsonrpc2.StringID(reqID.String())
-			// pipeReq, err := jsonrpc2.NewCall(jsonrpc2.StringID(reqID.String()),
-			// 	"getQueryItem", req.params)
-			// if err != nil {
-			// 	return err
-			// }
-			log.Printf("client: sending request ID=%v, origReqID=%v", req.request.ID, origReqID)
-			if _, err := w.Write(ctx, req.request); err != nil {
+			// We need to create a new request instead of reusing origReq.request here.
+			req := &jsonrpc2.Request{
+				ID:     jsonrpc2.StringID(reqID.String()),
+				Method: origReq.request.Method,
+				Params: origReq.request.Params,
+			}
+			log.Printf("client: sending request ID=%v, origReqID=%v", req.ID, origReqID)
+			if _, err := w.Write(ctx, req); err != nil {
 				return err
 			}
-			log.Printf("client: sent request ID=%v", req.request.ID)
+			log.Printf("client: sent request ID=%v", req.ID)
 
 			respMsg, _, err := r.Read(ctx)
 			if err != nil {
@@ -165,18 +168,8 @@ func (s *RemoteServer) runPipeClient(ctx context.Context, out io.WriteCloser, in
 			}
 			log.Printf("client: received resp=%#v", resp)
 			resp.ID = origReqID
-			req.resultC <- resp
+			origReq.resultC <- resp
 			log.Printf("client: sent response to resultC")
-			// if resp.Result != nil {
-			// 	var result string
-			// 	if err := json.Unmarshal(resp.Result, &result); err != nil {
-			// 		return err
-			// 	}
-			// 	log.Printf("client: received result=%+v (%s)", result, string(resp.Result))
-			// 	req.resultC <- secretQueryResponse{
-			// 		result: result,
-			// 	}
-			// }
 		}
 	}
 }
