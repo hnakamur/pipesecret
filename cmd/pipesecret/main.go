@@ -24,7 +24,7 @@ import (
 const shutdownMethod = "shutdown"
 
 type RemoteServeCmd struct {
-	Socket string `default:"/tmp/pipesecret.sock" help:"unix socket path"`
+	Socket string `required:"" default:"/tmp/pipesecret.sock" help:"unix socket path"`
 }
 
 func (c *RemoteServeCmd) Run(ctx context.Context) error {
@@ -36,9 +36,9 @@ func (c *RemoteServeCmd) Run(ctx context.Context) error {
 }
 
 type RemoteCmd struct {
-	Item    string        `help:"item name to get"`
-	Query   string        `env:"PIPESECRET_QUERY" help:"query string for gojq"`
-	Socket  string        `default:"/tmp/pipesecret.sock" env:"PIPESECRET_SOCKET" help:"unix socket path"`
+	Item    string        `required:"" help:"item name to get"`
+	Query   string        `required:"" default:"{\"username\": .fields[] | select(.id == \"username\").value, \"password\": .fields[] | select(.id == \"password\").value}" env:"PIPESECRET_QUERY" help:"query string for gojq"`
+	Socket  string        `required:"" default:"/tmp/pipesecret.sock" env:"PIPESECRET_SOCKET" help:"unix socket path"`
 	Timeout time.Duration `default:"5s" help:"connect timeout"`
 }
 
@@ -68,10 +68,10 @@ func (c *RemoteCmd) Run(ctx context.Context) error {
 }
 
 type ServeCmd struct {
-	SSH     string `name:"ssh" default:"ssh" env:"PIPESECRET_SSH" help:"ssh command"`
+	SSH     string `required:"" default:"ssh" env:"PIPESECRET_SSH" help:"ssh command"`
 	Host    string `required:"" env:"PIPESECRET_HOST" help:"ssh destination hostname"`
-	Command string `env:"PIPESECRET_COMMAND" help:"command and arguements to execute on the ssh destination host"`
-	Op      string `env:"PIPESECRET_OP" help:"path to 1Password CLI"`
+	Command string `required:"" env:"PIPESECRET_COMMAND" help:"command and arguements to execute on the ssh destination host"`
+	Op      string `required:"" env:"PIPESECRET_OP" help:"path to 1Password CLI"`
 }
 
 func (c *ServeCmd) Run(ctx context.Context) error {
@@ -173,7 +173,7 @@ var cli struct {
 }
 
 func main() {
-	ctx := kong.Parse(&cli, kong.Configuration(kong.JSON, "~/.config/pipesecret.json"))
+	ctx := kong.Parse(&cli)
 	// kong.BindTo is needed to bind a context.Context value.
 	// See https://github.com/alecthomas/kong/issues/48
 	ctx.BindTo(context.Background(), (*context.Context)(nil))
