@@ -36,10 +36,10 @@ func (c *RemoteServeCmd) Run(ctx context.Context) error {
 }
 
 type RemoteCmd struct {
-	Item    string        `required:"" help:"item name to get"`
-	Query   string        `required:"" default:"{\"username\": .fields[] | select(.id == \"username\").value, \"password\": .fields[] | select(.id == \"password\").value}" env:"PIPESECRET_QUERY" help:"query string for gojq"`
-	Socket  string        `required:"" default:"/tmp/pipesecret.sock" env:"PIPESECRET_SOCKET" help:"unix socket path"`
-	Timeout time.Duration `default:"5s" help:"connect timeout"`
+	Item    string        `group:"query" required:"" help:"item name to get"`
+	Query   string        `group:"query" required:"" default:"{\"username\": .fields[] | select(.id == \"username\").value, \"password\": .fields[] | select(.id == \"password\").value}" env:"PIPESECRET_QUERY" help:"query string for gojq"`
+	Socket  string        `group:"connect" required:"" default:"/tmp/pipesecret.sock" env:"PIPESECRET_SOCKET" help:"unix socket path"`
+	Timeout time.Duration `group:"connect" default:"5s" help:"connect timeout"`
 }
 
 type GetQueryItemRequestParams struct {
