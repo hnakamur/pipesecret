@@ -36,9 +36,9 @@ func (c *RemoteServeCmd) Run(ctx context.Context) error {
 }
 
 type RemoteCmd struct {
-	Item    string        `default:"テスト 3" help:"item name to get"`
-	Query   string        `default:"{\"username\": .fields[] | select(.id == \"username\").value, \"password\": .fields[] | select(.id == \"password\").value}" help:"query string for gojq"`
-	Socket  string        `default:"/tmp/pipesecret.sock" help:"unix socket path"`
+	Item    string        `help:"item name to get"`
+	Query   string        `env:"PIPESECRET_QUERY" help:"query string for gojq"`
+	Socket  string        `default:"/tmp/pipesecret.sock" env:"PIPESECRET_SOCKET" help:"unix socket path"`
 	Timeout time.Duration `default:"5s" help:"connect timeout"`
 }
 
@@ -68,13 +68,14 @@ func (c *RemoteCmd) Run(ctx context.Context) error {
 }
 
 type ServeCmd struct {
-	Hostname string `default:"ggear" help:"ssh destination hostname"`
-	Command  string `default:"/home/hnakamur/.local/bin/pipesecret remote-serve --socket /tmp/pipesecret.sock" help:"command and arguements to execute on the ssh destination host"`
-	OpExe    string `default:"/mnt/c/Users/hnakamur/AppData/Local/Microsoft/WinGet/Links/op.exe" help:"path to 1Password CLI"`
+	SSH     string `name:"ssh" default:"ssh" env:"PIPESECRET_SSH" help:"ssh command"`
+	Host    string `required:"" env:"PIPESECRET_HOST" help:"ssh destination hostname"`
+	Command string `env:"PIPESECRET_COMMAND" help:"command and arguements to execute on the ssh destination host"`
+	Op      string `env:"PIPESECRET_OP" help:"path to 1Password CLI"`
 }
 
 func (c *ServeCmd) Run(ctx context.Context) error {
-	cmd := exec.Command("ssh", c.Hostname, c.Command)
+	cmd := exec.Command(c.SSH, c.Host, c.Command)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return err
@@ -126,7 +127,7 @@ func (c *ServeCmd) Run(ctx context.Context) error {
 			if err := json.Unmarshal(req.Params, &params); err != nil {
 				return nil, xerrors.Errorf("%w: %s", jsonrpc2.ErrParse, err)
 			}
-			getter, err := internal.NewOnePasswordItemGetter(c.OpExe)
+			getter, err := internal.NewOnePasswordItemGetter(c.Op)
 			if err != nil {
 				return nil, xerrors.Errorf("%w: %s", jsonrpc2.ErrInternal, err)
 			}
@@ -172,7 +173,7 @@ var cli struct {
 }
 
 func main() {
-	ctx := kong.Parse(&cli)
+	ctx := kong.Parse(&cli, kong.Configuration(kong.JSON, "~/.config/pipesecret.json"))
 	// kong.BindTo is needed to bind a context.Context value.
 	// See https://github.com/alecthomas/kong/issues/48
 	ctx.BindTo(context.Background(), (*context.Context)(nil))
