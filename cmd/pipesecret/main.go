@@ -168,7 +168,7 @@ var cli struct {
 	Debug bool `help:"Enable debug mode."`
 
 	Remote      RemoteCmd      `cmd:"" help:"remote client subcommand."`
-	RemoteServe RemoteServeCmd `cmd:"" help:"remote server subcommand."`
+	RemoteServe RemoteServeCmd `cmd:"" help:"remote server which is executed automatically by serve subcommand."`
 	Serve       ServeCmd       `cmd:"" help:"controller server subcommand."`
 }
 
