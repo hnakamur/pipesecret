@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"log"
 	"os"
@@ -23,12 +24,25 @@ import (
 
 const shutdownMethod = "shutdown"
 
+var cli struct {
+	Debug bool `help:"Enable debug mode."`
+
+	Remote      RemoteCmd      `cmd:"" help:"remote client subcommand."`
+	RemoteServe RemoteServeCmd `cmd:"" help:"remote server which is executed automatically by serve subcommand."`
+	Serve       ServeCmd       `cmd:"" help:"controller server subcommand."`
+}
+
+const defaultSocketPathEnvName = "PIPESECRET_SOCKET"
+
+var defaultSocketPath string
+
 type RemoteServeCmd struct {
-	Socket    string        `group:"listen" required:"" default:"/tmp/pipesecret.sock" help:"unix socket path"`
+	Socket    string        `group:"listen" required:"" default:"${default_socket_path}" env:"PIPESECRET_SOCKET" help:"unix socket path"`
 	Heartbeat time.Duration `group:"pipe rpc" default:"5s" help:"heartbeat interval"`
 }
 
 func (c *RemoteServeCmd) Run(ctx context.Context) error {
+	log.Printf("remote-serve socket=%s", c.Socket)
 	s := rpc.NewRemoteServer(c.Socket, c.Heartbeat)
 	if err := s.Run(ctx, os.Stdout, os.Stdin); err != nil {
 		return err
@@ -39,7 +53,7 @@ func (c *RemoteServeCmd) Run(ctx context.Context) error {
 type RemoteCmd struct {
 	Item    string        `group:"query" required:"" help:"item name to get"`
 	Query   string        `group:"query" required:"" default:"{\"username\": .fields[] | select(.id == \"username\").value, \"password\": .fields[] | select(.id == \"password\").value}" env:"PIPESECRET_QUERY" help:"query string for gojq"`
-	Socket  string        `group:"connect" required:"" default:"/tmp/pipesecret.sock" env:"PIPESECRET_SOCKET" help:"unix socket path"`
+	Socket  string        `group:"connect" required:"" default:"${default_socket_path}" env:"PIPESECRET_SOCKET" help:"unix socket path"`
 	Timeout time.Duration `group:"connect" default:"5s" help:"connect timeout"`
 }
 
@@ -71,12 +85,13 @@ func (c *RemoteCmd) Run(ctx context.Context) error {
 type ServeCmd struct {
 	SSH     string `group:"pipe rpc" required:"" default:"ssh" env:"PIPESECRET_SSH" help:"ssh command"`
 	Host    string `group:"pipe rpc" required:"" env:"PIPESECRET_HOST" help:"destination hostname"`
-	Command string `group:"pipe rpc" required:"" env:"PIPESECRET_COMMAND" help:"command and arguements to execute on the destination host"`
+	Command string `group:"pipe rpc" required:"" default:"${default_command}" env:"PIPESECRET_COMMAND" help:"command and arguements to execute on the destination host"`
 	Op      string `required:"" env:"PIPESECRET_OP" help:"path to 1Password CLI"`
 }
 
 func (c *ServeCmd) Run(ctx context.Context) error {
 	cmd := exec.Command(c.SSH, c.Host, c.Command)
+	cmd.Env = append(cmd.Environ(), fmt.Sprintf("%s=%s", defaultSocketPathEnvName, defaultSocketPath))
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return err
@@ -165,16 +180,17 @@ func (c *ServeCmd) Run(ctx context.Context) error {
 	return nil
 }
 
-var cli struct {
-	Debug bool `help:"Enable debug mode."`
-
-	Remote      RemoteCmd      `cmd:"" help:"remote client subcommand."`
-	RemoteServe RemoteServeCmd `cmd:"" help:"remote server which is executed automatically by serve subcommand."`
-	Serve       ServeCmd       `cmd:"" help:"controller server subcommand."`
-}
-
 func main() {
-	ctx := kong.Parse(&cli)
+	defaultSocketPath = os.Getenv(defaultSocketPathEnvName)
+	if defaultSocketPath == "" {
+		defaultSocketPath = "/tmp/pipesecret.sock"
+	}
+	log.Printf("pipesecret defaultSocketPath=%s", defaultSocketPath)
+
+	ctx := kong.Parse(&cli, kong.Vars{
+		"default_socket_path": defaultSocketPath,
+		"default_command":     os.Getenv("PIPESECRET_COMMAND"),
+	})
 	// kong.BindTo is needed to bind a context.Context value.
 	// See https://github.com/alecthomas/kong/issues/48
 	ctx.BindTo(context.Background(), (*context.Context)(nil))
