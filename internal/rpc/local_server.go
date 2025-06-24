@@ -12,6 +12,7 @@ import (
 	"os/signal"
 
 	"github.com/hnakamur/pipesecret/internal"
+	"github.com/hnakamur/pipesecret/internal/myerrors"
 	"github.com/hnakamur/pipesecret/internal/piperpc"
 	"golang.org/x/exp/jsonrpc2"
 	"golang.org/x/xerrors"
@@ -76,26 +77,14 @@ func RunLocalServer(ctx context.Context, sshPath, host, remoteCommand, opExePath
 
 	server := piperpc.NewServer(jsonrpc2.RawFramer(), jsonrpc2.HandlerFunc(handler))
 	localErr := server.Run(ctx, stdout, stdin)
-	if localErr != nil {
-		logger.ErrorContext(ctx, "got error from local server", "localErr", localErr)
-	} else {
-		logger.DebugContext(ctx, "after server.Run")
-	}
-
 	remoteErr := cmd.Wait()
 	if remoteErr != nil {
-		logger.ErrorContext(ctx, "got error from remote-serve", "remoteErr", remoteErr, "ctx.Err", ctx.Err())
 		if errors.Is(ctx.Err(), context.Canceled) {
-			logger.DebugContext(ctx, "ignore remoteErr as we are exiting after receiving signal")
+			logger.DebugContext(ctx, "ignore remoteErr as we are exiting after receiving signal", "remoteErr", remoteErr)
 			// Ignore "exit status 255" error from ssh.
 			remoteErr = nil
 		}
-	} else {
-		logger.DebugContext(ctx, "after cmd.Wait")
 	}
 
-	if localErr != nil || remoteErr != nil {
-		return errors.Join(localErr, remoteErr)
-	}
-	return nil
+	return myerrors.Join(localErr, remoteErr)
 }

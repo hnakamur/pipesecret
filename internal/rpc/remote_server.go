@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/hnakamur/pipesecret/internal/myerrors"
 	"github.com/hnakamur/pipesecret/internal/unixsocketrpc"
 	"golang.org/x/exp/jsonrpc2"
 	"golang.org/x/xerrors"
@@ -59,14 +60,7 @@ func (s *RemoteServer) Run(ctx context.Context, out io.WriteCloser, in io.Reader
 	}()
 	wg.Wait()
 
-	if unixsocketErr != nil && pipeErr != nil {
-		return errors.Join(unixsocketErr, pipeErr)
-	} else if unixsocketErr != nil {
-		return unixsocketErr
-	} else if pipeErr != nil {
-		return pipeErr
-	}
-	return nil
+	return myerrors.Join(unixsocketErr, pipeErr)
 }
 
 func (s *RemoteServer) runUnixSocketServer(ctx context.Context) error {
