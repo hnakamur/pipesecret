@@ -31,13 +31,13 @@ func (c *Client) Close() error {
 	return c.conn.Close()
 }
 
-func (c *Client) CallSync(ctx context.Context, method string, params any) (any, jsonrpc2.ID, error) {
+func (c *Client) CallSync(ctx context.Context, method string, params any) (string, jsonrpc2.ID, error) {
 	call := c.conn.Call(ctx, method, params)
 	log.Printf("client: created a call, id=%v", call.ID())
-	var result any
+	var result string
 	if err := call.Await(ctx, &result); err != nil {
 		log.Printf("await error=%v", err)
-		return nil, jsonrpc2.ID{}, fmt.Errorf("failed to wait result from unix socket: %s", err)
+		return "", jsonrpc2.ID{}, fmt.Errorf("failed to wait result from unix socket: %s", err)
 	}
 	log.Printf("client: after await, id=%v, result=%v", call.ID(), result)
 	return result, call.ID(), nil
