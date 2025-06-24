@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/google/uuid"
 	"golang.org/x/exp/jsonrpc2"
 )
 
@@ -35,18 +34,16 @@ func (c *Client) Run(ctx context.Context, out io.Writer, in io.Reader) error {
 
 	w := c.framer.Writer(out)
 	r := c.framer.Reader(in)
+	reqID := int64(0)
 	for {
 		select {
 		case <-ctx.Done():
 			logger.DebugContext(ctx, "pipeClient received ctx.Done, exiting")
 			return nil
 		case <-time.After(c.heartbeatInterval):
-			reqID, err := uuid.NewRandom()
-			if err != nil {
-				return err
-			}
+			reqID++
 			req := &jsonrpc2.Request{
-				ID:     jsonrpc2.StringID(reqID.String()),
+				ID:     jsonrpc2.Int64ID(reqID),
 				Method: "heartbeat",
 			}
 			if _, err := w.Write(ctx, req); err != nil {
@@ -64,13 +61,10 @@ func (c *Client) Run(ctx context.Context, out io.Writer, in io.Reader) error {
 			logger.DebugContext(ctx, "pipeClient received heartbeat request", "resp", resp)
 		case origReq := <-c.requestC:
 			origReqID := origReq.Request.ID
-			reqID, err := uuid.NewRandom()
-			if err != nil {
-				return err
-			}
+			reqID++
 			// We need to create a new request instead of reusing origReq.request here.
 			req := &jsonrpc2.Request{
-				ID:     jsonrpc2.StringID(reqID.String()),
+				ID:     jsonrpc2.Int64ID(reqID),
 				Method: origReq.Request.Method,
 				Params: origReq.Request.Params,
 			}
