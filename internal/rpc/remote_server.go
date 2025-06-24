@@ -3,7 +3,6 @@ package rpc
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"log/slog"
 
 	"fmt"
@@ -11,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/hnakamur/pipesecret/internal/myerrors"
+	"github.com/hnakamur/pipesecret/internal/piperpc"
 	"github.com/hnakamur/pipesecret/internal/unixsocketrpc"
 	"golang.org/x/exp/jsonrpc2"
 	"golang.org/x/xerrors"
@@ -21,20 +20,15 @@ import (
 type RemoteServer struct {
 	socketPath        string
 	framer            jsonrpc2.Framer
-	requestC          chan secretQueryRequst
+	requestC          chan piperpc.RequestQueueItem
 	heartbeatInterval time.Duration
-}
-
-type secretQueryRequst struct {
-	request *jsonrpc2.Request
-	resultC chan *jsonrpc2.Response
 }
 
 func NewRemoteServer(socketPath string, heartbeatInterval time.Duration) *RemoteServer {
 	return &RemoteServer{
 		socketPath:        socketPath,
 		framer:            jsonrpc2.RawFramer(),
-		requestC:          make(chan secretQueryRequst, 1),
+		requestC:          make(chan piperpc.RequestQueueItem, 1),
 		heartbeatInterval: heartbeatInterval,
 	}
 }
@@ -84,9 +78,9 @@ func (s *RemoteServer) runUnixSocketServer(ctx context.Context) error {
 				return nil, xerrors.Errorf("%w: %s", jsonrpc2.ErrParse, err)
 			}
 			resultC := make(chan *jsonrpc2.Response)
-			s.requestC <- secretQueryRequst{
-				request: req,
-				resultC: resultC,
+			s.requestC <- piperpc.RequestQueueItem{
+				Request: req,
+				ResultC: resultC,
 			}
 			select {
 			case <-ctx.Done():
@@ -108,67 +102,6 @@ func (s *RemoteServer) runUnixSocketServer(ctx context.Context) error {
 }
 
 func (s *RemoteServer) runPipeClient(ctx context.Context, out io.Writer, in io.Reader) error {
-	logger := slog.Default().With("program", "remote-serve")
-
-	w := s.framer.Writer(out)
-	r := s.framer.Reader(in)
-	for {
-		select {
-		case <-ctx.Done():
-			logger.DebugContext(ctx, "pipeClient received ctx.Done, exiting")
-			return nil
-		case <-time.After(s.heartbeatInterval):
-			reqID, err := uuid.NewRandom()
-			if err != nil {
-				return err
-			}
-			req := &jsonrpc2.Request{
-				ID:     jsonrpc2.StringID(reqID.String()),
-				Method: "heartbeat",
-			}
-			if _, err := w.Write(ctx, req); err != nil {
-				return err
-			}
-			logger.DebugContext(ctx, "pipeClient sent heartbeat request", "reqID", req.ID)
-			respMsg, _, err := r.Read(ctx)
-			if err != nil {
-				return err
-			}
-			resp, ok := respMsg.(*jsonrpc2.Response)
-			if !ok {
-				return errors.New("expected a jsonrpc2 response")
-			}
-			logger.DebugContext(ctx, "pipeClient received heartbeat request", "resp", resp)
-		case origReq := <-s.requestC:
-			origReqID := origReq.request.ID
-			reqID, err := uuid.NewRandom()
-			if err != nil {
-				return err
-			}
-			// We need to create a new request instead of reusing origReq.request here.
-			req := &jsonrpc2.Request{
-				ID:     jsonrpc2.StringID(reqID.String()),
-				Method: origReq.request.Method,
-				Params: origReq.request.Params,
-			}
-			logger.DebugContext(ctx, "pipeClient writing request", "reqID", req.ID, "origReqID", origReqID)
-			if _, err := w.Write(ctx, req); err != nil {
-				return err
-			}
-			logger.DebugContext(ctx, "pipeClient written request", "reqID", req.ID, "origReqID", origReqID)
-
-			respMsg, _, err := r.Read(ctx)
-			if err != nil {
-				return err
-			}
-			resp, ok := respMsg.(*jsonrpc2.Response)
-			if !ok {
-				return errors.New("expected a jsonrpc2 response")
-			}
-			logger.DebugContext(ctx, "pipeClient received response", "resp", resp)
-			resp.ID = origReqID
-			origReq.resultC <- resp
-			logger.DebugContext(ctx, "pipeClient esnt response to resultC")
-		}
-	}
+	client := piperpc.NewClient(jsonrpc2.RawFramer(), s.requestC, s.heartbeatInterval)
+	return client.Run(ctx, out, in)
 }
