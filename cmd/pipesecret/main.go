@@ -30,12 +30,12 @@ var cli struct {
 
 	PassToStdin PassToStdinCmd `cmd:"" help:"Run the specified command with passing secrets to stdin. This subcommand is supposed to be executed on the remote server."`
 	PassWithEnv PassWithEnvCmd `cmd:"" help:"Run the specified command with passing secrets with environment variables. This subcommand is supposed to be executed on the remote server."`
-	RemoteServe RemoteServeCmd `cmd:"" help:"remote server which is executed automatically by serve subcommand."`
-	Serve       ServeCmd       `cmd:"" help:"controller server subcommand."`
+	RemoteServe RemoteServeCmd `cmd:"" help:"The remote server which is executed automatically by serve subcommand."`
+	Serve       ServeCmd       `cmd:"" help:"Run local server. This subcommand is supposed to be executed on the local machine."`
 }
 
 type PassWithEnvCmd struct {
-	Item    string        `group:"query" required:"" help:"item name to get"`
+	Item    string        `group:"query" required:"" help:"Item name in password manager to get"`
 	Query   string        `group:"query" required:"" default:"{\"username\": .fields[] | select(.id == \"username\").value, \"password\": .fields[] | select(.id == \"password\").value}" env:"PIPESECRET_QUERY" help:"query string for gojq"`
 	Socket  string        `group:"connect" required:"" default:"${default_socket_path}" env:"PIPESECRET_SOCKET" help:"unix socket path"`
 	Timeout time.Duration `group:"connect" default:"5s" help:"connect timeout"`
@@ -76,7 +76,7 @@ func (c *PassWithEnvCmd) Run(ctx context.Context) error {
 }
 
 type PassToStdinCmd struct {
-	Item    string        `group:"query" required:"" help:"item name to get"`
+	Item    string        `group:"query" required:"" help:"Item name in password manager to get"`
 	Query   string        `group:"query" required:"" default:"{\"PIPESECRET_USER\": .fields[] | select(.id == \"username\").value, \"PIPESECRET_PASS\": .fields[] | select(.id == \"password\").value}" env:"PIPESECRET_QUERY" help:"query string for gojq"`
 	Socket  string        `group:"connect" required:"" default:"${default_socket_path}" env:"PIPESECRET_SOCKET" help:"unix socket path"`
 	Timeout time.Duration `group:"connect" default:"5s" help:"connect timeout"`
