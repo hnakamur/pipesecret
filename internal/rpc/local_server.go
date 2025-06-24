@@ -42,15 +42,19 @@ func RunLocalServer(ctx context.Context, sshPath, host, remoteCommand, opExePath
 
 	exitC := make(chan os.Signal, 1)
 	signal.Notify(exitC, os.Interrupt)
+	var receivedSignal os.Signal
 	go func() {
-		<-exitC
+		receivedSignal = <-exitC
 		logger.DebugContext(ctx, "got interrupt signal")
-		if err := cmd.Process.Kill(); err != nil {
-			logger.ErrorContext(ctx, "failed to kill remote-serve process", "err", err)
-		} else {
-			logger.DebugContext(ctx, "killed remote-serve process")
-		}
+		// No need to kill ssh. It exits with status 255 after we close our
+		// stdout (stdin in ssh).
+		// if err := cmd.Process.Kill(); err != nil {
+		// 	logger.ErrorContext(ctx, "failed to kill remote-serve process", "err", err)
+		// } else {
+		// 	logger.DebugContext(ctx, "killed remote-serve process")
+		// }
 		cancel()
+		logger.DebugContext(ctx, "called cancel")
 	}()
 
 	go func() {
@@ -97,7 +101,12 @@ func RunLocalServer(ctx context.Context, sshPath, host, remoteCommand, opExePath
 
 	remoteErr := cmd.Wait()
 	if remoteErr != nil {
-		logger.ErrorContext(ctx, "got error from local remote-serve", "remoteErr", remoteErr)
+		logger.ErrorContext(ctx, "got error from remote-serve", "remoteErr", remoteErr)
+		if receivedSignal != nil {
+			logger.DebugContext(ctx, "ignore remoteErr as we are exiting after receiving signal")
+			// Ignore "exit status 255" error from ssh.
+			remoteErr = nil
+		}
 	} else {
 		logger.DebugContext(ctx, "after cmd.Wait")
 	}

@@ -26,9 +26,9 @@ func (c *Server) Run(ctx context.Context, in io.Reader, out io.WriteCloser) erro
 
 	defer func() {
 		if err := out.Close(); err != nil {
-			logger.DebugContext(ctx, "remoteServer: failed close server writer", "err", err)
+			logger.DebugContext(ctx, "localServer: failed close server writer", "err", err)
 		} else {
-			logger.DebugContext(ctx, "server closed writer")
+			logger.DebugContext(ctx, "localServer closed writer")
 		}
 	}()
 
@@ -39,6 +39,7 @@ func (c *Server) Run(ctx context.Context, in io.Reader, out io.WriteCloser) erro
 		reqMsg, _, err := r.Read(ctx)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
+				logger.DebugContext(ctx, "piperpc.Server received EOF, exiting")
 				return nil
 			}
 			return err
