@@ -20,8 +20,8 @@ import (
 func RunLocalServer(ctx context.Context, sshPath, host, remoteCommand, opExePath string) error {
 	logger := slog.Default().With("subcommand", "serve")
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
+	defer stop()
 
 	cmd := exec.CommandContext(ctx, sshPath, host, remoteCommand)
 	stdin, err := cmd.StdinPipe()
@@ -39,17 +39,6 @@ func RunLocalServer(ctx context.Context, sshPath, host, remoteCommand, opExePath
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-
-	exitC := make(chan os.Signal, 1)
-	signal.Notify(exitC, os.Interrupt)
-	var receivedSignal os.Signal
-	go func() {
-		receivedSignal = <-exitC
-		logger.DebugContext(ctx, "got interrupt signal")
-		// No need to kill ssh. It exits with status 255 after we call cancel.
-		cancel()
-		logger.DebugContext(ctx, "called cancel")
-	}()
 
 	go func() {
 		scanner := bufio.NewScanner(stderr)
@@ -95,8 +84,8 @@ func RunLocalServer(ctx context.Context, sshPath, host, remoteCommand, opExePath
 
 	remoteErr := cmd.Wait()
 	if remoteErr != nil {
-		logger.ErrorContext(ctx, "got error from remote-serve", "remoteErr", remoteErr)
-		if receivedSignal != nil {
+		logger.ErrorContext(ctx, "got error from remote-serve", "remoteErr", remoteErr, "ctx.Err", ctx.Err())
+		if errors.Is(ctx.Err(), context.Canceled) {
 			logger.DebugContext(ctx, "ignore remoteErr as we are exiting after receiving signal")
 			// Ignore "exit status 255" error from ssh.
 			remoteErr = nil
