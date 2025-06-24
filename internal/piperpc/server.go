@@ -21,16 +21,8 @@ func NewServer(framer jsonrpc2.Framer, handler jsonrpc2.Handler) *Server {
 	}
 }
 
-func (c *Server) Run(ctx context.Context, in io.Reader, out io.WriteCloser) error {
+func (c *Server) Run(ctx context.Context, in io.Reader, out io.Writer) error {
 	logger := slog.Default().With("subcommand", "serve")
-
-	defer func() {
-		if err := out.Close(); err != nil {
-			logger.DebugContext(ctx, "localServer: failed close server writer", "err", err)
-		} else {
-			logger.DebugContext(ctx, "localServer closed writer")
-		}
-	}()
 
 	r := c.framer.Reader(in)
 	w := c.framer.Writer(out)

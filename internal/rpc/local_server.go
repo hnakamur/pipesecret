@@ -46,8 +46,7 @@ func RunLocalServer(ctx context.Context, sshPath, host, remoteCommand, opExePath
 	go func() {
 		receivedSignal = <-exitC
 		logger.DebugContext(ctx, "got interrupt signal")
-		// No need to kill ssh. It exits with status 255 after we close our
-		// stdout (stdin in ssh).
+		// No need to kill ssh. It exits with status 255 after we call cancel.
 		cancel()
 		logger.DebugContext(ctx, "called cancel")
 	}()
