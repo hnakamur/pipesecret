@@ -20,7 +20,10 @@ import (
 func RunLocalServer(ctx context.Context, sshPath, host, remoteCommand, opExePath string) error {
 	logger := slog.Default().With("subcommand", "serve")
 
-	cmd := exec.Command(sshPath, host, remoteCommand)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, sshPath, host, remoteCommand)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return err
@@ -36,9 +39,6 @@ func RunLocalServer(ctx context.Context, sshPath, host, remoteCommand, opExePath
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 
 	exitC := make(chan os.Signal, 1)
 	signal.Notify(exitC, os.Interrupt)
