@@ -113,7 +113,7 @@ func (s *RemoteServer) runUnixSocketServer(ctx context.Context) error {
 	return nil
 }
 
-func (s *RemoteServer) runPipeClient(ctx context.Context, out io.WriteCloser, in io.Reader) error {
+func (s *RemoteServer) runPipeClient(ctx context.Context, out io.Writer, in io.Reader) error {
 	logger := slog.Default().With("program", "remote-serve")
 
 	w := s.framer.Writer(out)
@@ -122,8 +122,7 @@ func (s *RemoteServer) runPipeClient(ctx context.Context, out io.WriteCloser, in
 		select {
 		case <-ctx.Done():
 			logger.DebugContext(ctx, "pipeClient received ctx.Done, exiting")
-			err := out.Close()
-			return err
+			return nil
 		case <-time.After(s.heartbeatInterval):
 			reqID, err := uuid.NewRandom()
 			if err != nil {
