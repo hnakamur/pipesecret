@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
-	"os"
 
 	"fmt"
 	"io"
@@ -46,17 +45,7 @@ type GetQueryItemRequestParams struct {
 
 const shutdownMethod = "shutdown"
 
-var RemoteServerLogger = sync.OnceValue(func() *slog.Logger {
-	file, err := os.OpenFile("/tmp/pipesecret-remote-server-err.log", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
-	if err != nil {
-		panic(err)
-	}
-	return slog.New(slog.NewTextHandler(file, nil))
-})
-
 func (s *RemoteServer) Run(ctx context.Context, out io.WriteCloser, in io.Reader) error {
-	RemoteServerLogger().Info("run start")
-
 	var unixsocketErr, pipeErr error
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -70,10 +59,6 @@ func (s *RemoteServer) Run(ctx context.Context, out io.WriteCloser, in io.Reader
 	}()
 	wg.Wait()
 
-	if unixsocketErr != nil || pipeErr != nil {
-		RemoteServerLogger().Error("RemoteServer got error", "unixsocketErr", unixsocketErr, "pipeErr", pipeErr)
-	}
-
 	if unixsocketErr != nil && pipeErr != nil {
 		return errors.Join(unixsocketErr, pipeErr)
 	} else if unixsocketErr != nil {
@@ -85,11 +70,6 @@ func (s *RemoteServer) Run(ctx context.Context, out io.WriteCloser, in io.Reader
 }
 
 func (s *RemoteServer) runUnixSocketServer(ctx context.Context) error {
-	RemoteServerLogger().Info("runUnixSocketServer start")
-	defer func() {
-		RemoteServerLogger().Info("runUnixSocketServer exit")
-	}()
-
 	logger := slog.Default().With("program", "remote-serve")
 
 	us, err := unixsocketrpc.Listen(ctx, s.socketPath)
@@ -135,10 +115,6 @@ func (s *RemoteServer) runUnixSocketServer(ctx context.Context) error {
 
 func (s *RemoteServer) runPipeClient(ctx context.Context, out io.WriteCloser, in io.Reader) error {
 	logger := slog.Default().With("program", "remote-serve")
-	RemoteServerLogger().Info("runPipeClient start")
-	defer func() {
-		RemoteServerLogger().Info("runPipeClient exit")
-	}()
 
 	w := s.framer.Writer(out)
 	r := s.framer.Reader(in)
@@ -147,7 +123,6 @@ func (s *RemoteServer) runPipeClient(ctx context.Context, out io.WriteCloser, in
 		case <-ctx.Done():
 			logger.DebugContext(ctx, "pipeClient received ctx.Done, exiting")
 			err := out.Close()
-			RemoteServerLogger().Error("closed out", "err", err)
 			return err
 		case <-time.After(s.heartbeatInterval):
 			reqID, err := uuid.NewRandom()

@@ -117,7 +117,6 @@ func (c *RemoteServeCmd) Run(ctx context.Context) error {
 	slog.Debug("remote-serve", "socketPath", c.Socket)
 	s := rpc.NewRemoteServer(c.Socket, c.Heartbeat)
 	if err := s.Run(ctx, os.Stdout, os.Stdin); err != nil {
-		rpc.RemoteServerLogger().Error("got err from Run", "err", err)
 		return err
 	}
 	return nil

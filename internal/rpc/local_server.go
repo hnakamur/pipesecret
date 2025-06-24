@@ -48,11 +48,6 @@ func RunLocalServer(ctx context.Context, sshPath, host, remoteCommand, opExePath
 		logger.DebugContext(ctx, "got interrupt signal")
 		// No need to kill ssh. It exits with status 255 after we close our
 		// stdout (stdin in ssh).
-		// if err := cmd.Process.Kill(); err != nil {
-		// 	logger.ErrorContext(ctx, "failed to kill remote-serve process", "err", err)
-		// } else {
-		// 	logger.DebugContext(ctx, "killed remote-serve process")
-		// }
 		cancel()
 		logger.DebugContext(ctx, "called cancel")
 	}()
