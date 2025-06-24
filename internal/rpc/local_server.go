@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io/fs"
-	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -18,6 +18,8 @@ import (
 )
 
 func RunLocalServer(ctx context.Context, sshPath, host, remoteCommand, opExePath string) error {
+	logger := slog.Default().With("subcommand", "serve")
+
 	cmd := exec.Command(sshPath, host, remoteCommand)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -42,11 +44,11 @@ func RunLocalServer(ctx context.Context, sshPath, host, remoteCommand, opExePath
 	signal.Notify(exitC, os.Interrupt)
 	go func() {
 		<-exitC
-		log.Printf("got interrupt signal")
+		logger.DebugContext(ctx, "got interrupt signal")
 		if err := cmd.Process.Kill(); err != nil {
-			log.Printf("failed to kill remote process: %s", err)
+			logger.ErrorContext(ctx, "failed to kill remote-serve process", "err", err)
 		} else {
-			log.Printf("killed remote process")
+			logger.DebugContext(ctx, "killed remote-serve process")
 		}
 		cancel()
 	}()
@@ -55,10 +57,10 @@ func RunLocalServer(ctx context.Context, sshPath, host, remoteCommand, opExePath
 		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
 			line := scanner.Text()
-			log.Printf("pipeClient: %s", line)
+			logger.DebugContext(ctx, "stderr from remote-serve", "line", line)
 		}
 		if err := scanner.Err(); err != nil && !errors.Is(err, fs.ErrClosed) {
-			log.Printf("failed to scan pipeClient stderr: %s", err)
+			logger.ErrorContext(ctx, "failed to read remote-serve stderr", "err", err)
 		}
 	}()
 
@@ -88,16 +90,16 @@ func RunLocalServer(ctx context.Context, sshPath, host, remoteCommand, opExePath
 	server := piperpc.NewServer(jsonrpc2.RawFramer(), jsonrpc2.HandlerFunc(handler))
 	localErr := server.Run(ctx, stdout, stdin)
 	if localErr != nil {
-		log.Printf("localErr=%v", localErr)
+		logger.ErrorContext(ctx, "got error from local server", "localErr", localErr)
 	} else {
-		log.Printf("after server Run")
+		logger.DebugContext(ctx, "after server.Run")
 	}
 
 	remoteErr := cmd.Wait()
 	if remoteErr != nil {
-		log.Printf("remoteErr=%v", remoteErr)
+		logger.ErrorContext(ctx, "got error from local remote-serve", "remoteErr", remoteErr)
 	} else {
-		log.Printf("after cmd.Wait")
+		logger.DebugContext(ctx, "after cmd.Wait")
 	}
 
 	if localErr != nil || remoteErr != nil {

@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"strings"
@@ -41,8 +41,6 @@ func (c *PassWithEnvCmd) Run(ctx context.Context) error {
 		return err
 	}
 
-	log.Printf("result=%v (%T)", result, result)
-
 	values, ok := result.(map[string]any)
 	if !ok {
 		return errors.New("query result is not a JSON object")
@@ -54,8 +52,8 @@ func (c *PassWithEnvCmd) Run(ctx context.Context) error {
 	cmd.Stderr = os.Stderr
 	cmd.Env = cmd.Environ()
 	for k, v := range values {
-		log.Printf("k=%v, v=%v (%T)", k, v, v)
 		if s, ok := v.(string); ok {
+			slog.Debug("adding environment variable", "name", k, "value", s)
 			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, s))
 		}
 	}
@@ -88,8 +86,6 @@ func (c *PassToStdinCmd) Run(ctx context.Context) error {
 		return err
 	}
 
-	log.Printf("result=%v (%T)", result, result)
-
 	values, ok := result.(map[string]any)
 	if !ok {
 		return errors.New("query result is not a JSON object")
@@ -99,18 +95,12 @@ func (c *PassToStdinCmd) Run(ctx context.Context) error {
 	if err := tmpl.Execute(&templateOutput, values); err != nil {
 		return err
 	}
+	slog.Debug("rendered template", "templateOutput", templateOutput)
 
 	cmd := exec.CommandContext(ctx, c.Command, c.Args...)
 	cmd.Stdin = strings.NewReader(templateOutput.String())
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Env = cmd.Environ()
-	for k, v := range values {
-		log.Printf("k=%v, v=%v (%T)", k, v, v)
-		if s, ok := v.(string); ok {
-			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, s))
-		}
-	}
 	if err := cmd.Run(); err != nil {
 		return xerrors.Errorf("failed to run command: %s", err)
 	}
@@ -124,7 +114,7 @@ type RemoteServeCmd struct {
 }
 
 func (c *RemoteServeCmd) Run(ctx context.Context) error {
-	log.Printf("remote-serve socket=%s", c.Socket)
+	slog.Debug("remote-serve", "socketPath", c.Socket)
 	s := rpc.NewRemoteServer(c.Socket, c.Heartbeat)
 	if err := s.Run(ctx, os.Stdout, os.Stdin); err != nil {
 		return err
@@ -144,9 +134,16 @@ func (c *ServeCmd) Run(ctx context.Context) error {
 }
 
 func main() {
+	slogLevel := new(slog.LevelVar)
+	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slogLevel}))
+	slog.SetDefault(logger)
+
 	ctx := kong.Parse(&cli, kong.Vars{
 		"default_socket_path": "/tmp/pipesecret.sock",
 	})
+	if cli.Debug {
+		slogLevel.Set(slog.LevelDebug)
+	}
 	// kong.BindTo is needed to bind a context.Context value.
 	// See https://github.com/alecthomas/kong/issues/48
 	ctx.BindTo(context.Background(), (*context.Context)(nil))

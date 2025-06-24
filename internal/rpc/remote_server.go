@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 
 	"fmt"
 	"io"
-	"log"
 	"sync"
 	"time"
 
@@ -69,14 +69,18 @@ func (s *RemoteServer) Run(ctx context.Context, out io.WriteCloser, in io.Reader
 }
 
 func (s *RemoteServer) runUnixSocketServer(ctx context.Context) error {
+	logger := slog.Default().With("program", "remote-serve")
+
 	us, err := unixsocketrpc.Listen(ctx, s.socketPath)
 	if err != nil {
 		return err
 	}
+	logger.DebugContext(ctx, "unixSocketServer start listening", "socketPath", s.socketPath)
 
 	handler := func(ctx context.Context, req *jsonrpc2.Request) (any, error) {
+		logger.DebugContext(ctx, "handler start", "method", req.Method)
 		defer func() {
-			log.Printf("remoteServer handler exiting, method=%s", req.Method)
+			logger.DebugContext(ctx, "handler exit", "method", req.Method)
 		}()
 		switch req.Method {
 		case "getQueryItem":
@@ -91,13 +95,10 @@ func (s *RemoteServer) runUnixSocketServer(ctx context.Context) error {
 			}
 			select {
 			case <-ctx.Done():
-				log.Printf("unixSocketServer ctx.Done, ctx.Err=%v", ctx.Err())
+				logger.DebugContext(ctx, "unixSocketServer received ctx.Done", "err", ctx.Err())
 				return nil, ctx.Err()
 			case result := <-resultC:
-				log.Printf("unix socket server received result=%#v, result.Result=%s", result, string(result.Result))
-				if result.Error != nil {
-					log.Printf("result.Error=%v", result.Error)
-				}
+				logger.DebugContext(ctx, "unixSocketServer received result", "result", result, "result.Result", string(result.Result))
 				return result.Result, result.Error
 			}
 		default:
@@ -112,6 +113,8 @@ func (s *RemoteServer) runUnixSocketServer(ctx context.Context) error {
 }
 
 func (s *RemoteServer) runPipeClient(ctx context.Context, out io.WriteCloser, in io.Reader) error {
+	logger := slog.Default().With("program", "remote-serve")
+
 	w := s.framer.Writer(out)
 	r := s.framer.Reader(in)
 	for {
@@ -130,7 +133,7 @@ func (s *RemoteServer) runPipeClient(ctx context.Context, out io.WriteCloser, in
 			if _, err := w.Write(ctx, req); err != nil {
 				return err
 			}
-			log.Printf("client: sent heartbeat request ID=%v", req.ID)
+			logger.DebugContext(ctx, "pipeClient sent heartbeat request", "reqID", req.ID)
 			respMsg, _, err := r.Read(ctx)
 			if err != nil {
 				return err
@@ -139,7 +142,7 @@ func (s *RemoteServer) runPipeClient(ctx context.Context, out io.WriteCloser, in
 			if !ok {
 				return errors.New("expected a jsonrpc2 response")
 			}
-			log.Printf("client: received heartbeat resp=%#v", resp)
+			logger.DebugContext(ctx, "pipeClient received heartbeat request", "resp", resp)
 		case origReq := <-s.requestC:
 			origReqID := origReq.request.ID
 			reqID, err := uuid.NewRandom()
@@ -152,11 +155,11 @@ func (s *RemoteServer) runPipeClient(ctx context.Context, out io.WriteCloser, in
 				Method: origReq.request.Method,
 				Params: origReq.request.Params,
 			}
-			log.Printf("client: sending request ID=%v, origReqID=%v", req.ID, origReqID)
+			logger.DebugContext(ctx, "pipeClient writing request", "reqID", req.ID, "origReqID", origReqID)
 			if _, err := w.Write(ctx, req); err != nil {
 				return err
 			}
-			log.Printf("client: sent request ID=%v", req.ID)
+			logger.DebugContext(ctx, "pipeClient written request", "reqID", req.ID, "origReqID", origReqID)
 
 			respMsg, _, err := r.Read(ctx)
 			if err != nil {
@@ -166,10 +169,10 @@ func (s *RemoteServer) runPipeClient(ctx context.Context, out io.WriteCloser, in
 			if !ok {
 				return errors.New("expected a jsonrpc2 response")
 			}
-			log.Printf("client: received resp=%#v", resp)
+			logger.DebugContext(ctx, "pipeClient received response", "resp", resp)
 			resp.ID = origReqID
 			origReq.resultC <- resp
-			log.Printf("client: sent response to resultC")
+			logger.DebugContext(ctx, "pipeClient esnt response to resultC")
 		}
 	}
 }

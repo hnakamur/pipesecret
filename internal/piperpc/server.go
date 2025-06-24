@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log"
+	"log/slog"
 
 	"golang.org/x/exp/jsonrpc2"
 )
@@ -22,18 +22,20 @@ func NewServer(framer jsonrpc2.Framer, handler jsonrpc2.Handler) *Server {
 }
 
 func (c *Server) Run(ctx context.Context, in io.Reader, out io.WriteCloser) error {
+	logger := slog.Default().With("subcommand", "serve")
+
 	defer func() {
 		if err := out.Close(); err != nil {
-			log.Printf("failed close server writer: %s", err)
+			logger.DebugContext(ctx, "remoteServer: failed close server writer", "err", err)
 		} else {
-			log.Printf("server closed writer")
+			logger.DebugContext(ctx, "server closed writer")
 		}
 	}()
 
 	r := c.framer.Reader(in)
 	w := c.framer.Writer(out)
 	for {
-		log.Print("server: reading")
+		logger.DebugContext(ctx, "reading message")
 		reqMsg, _, err := r.Read(ctx)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
@@ -41,7 +43,7 @@ func (c *Server) Run(ctx context.Context, in io.Reader, out io.WriteCloser) erro
 			}
 			return err
 		}
-		log.Printf("server: read message, reqMsg=%+v", reqMsg)
+		logger.DebugContext(ctx, "written message", "reqMsg", reqMsg)
 		req, ok := reqMsg.(*jsonrpc2.Request)
 		if !ok {
 			return errors.New("expected a jsonrpc2 request")
@@ -52,11 +54,11 @@ func (c *Server) Run(ctx context.Context, in io.Reader, out io.WriteCloser) erro
 		if err != nil {
 			return err
 		}
-		log.Printf("server: built message, respMsg=%+v, result=%s", respMsg, string(respMsg.Result))
+		logger.DebugContext(ctx, "built message", "message", respMsg, "result", string(respMsg.Result))
 
 		if _, err := w.Write(ctx, respMsg); err != nil {
 			return err
 		}
-		log.Printf("server: sent message, respMsg=%+v", respMsg)
+		logger.DebugContext(ctx, "written message", "message", respMsg, "result", string(respMsg.Result))
 	}
 }
