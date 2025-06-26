@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime/debug"
 	"strings"
 	"text/template"
@@ -31,9 +32,10 @@ type RunCmd struct {
 	Item  string `group:"query" required:"" help:"Item name in password manager to get"`
 	Query string `group:"query" required:"" default:"{\"username\": .fields[] | select(.id == \"username\").value, \"password\": .fields[] | select(.id == \"password\").value}" env:"PIPESECRET_QUERY" help:"query string for gojq"`
 
-	Stdin string            `group:"inject" help:"inject secret to stdin if not empty. format: Go text/template string. example: {{.username}}{{\"\\n\"}}{{.password}}{{\"\\n\"}}"`
-	Env   map[string]string `group:"inject" help:"inject secret with an environment variable, value format: NAME1=TEMPLATE1;NAME2=TEMPLATE2, example: TOKEN={{.username}};SECRET={{.password}}"`
-	File  map[string]string `group:"inject" help:"inject secret in a temporary file, value format: NAME1=TEMPLATE1;NAME2=TEMPLATE2, example: token.txt={{.username}};secret.txt={{.password}}"`
+	Stdin  string            `group:"inject" help:"inject secret to stdin if not empty. format: Go text/template string. example: {{.username}}{{\"\\n\"}}{{.password}}{{\"\\n\"}}"`
+	DirKey string            `group:"inject" help:"create temporary directory with random name for files which will be created --file. example: --dir-key=secret_dir --file=token.txt={{.username}};secret.txt={{.password}} --env=TOKEN_FILE={{.secret_dir}}/token.txt;SECRET_FILE={{.secret_dir}}/secret.txt"`
+	File   map[string]string `group:"inject" help:"inject secret in a temporary file, value format: NAME1=TEMPLATE1;NAME2=TEMPLATE2, example: token.txt={{.username}};secret.txt={{.password}}"`
+	Env    map[string]string `group:"inject" help:"inject secret with an environment variable, value format: NAME1=TEMPLATE1;NAME2=TEMPLATE2, example: TOKEN={{.username}};SECRET={{.password}}"`
 
 	Socket         string        `group:"connect" required:"" default:"${default_socket_path}" env:"PIPESECRET_SOCKET" help:"unix socket path"`
 	ConnectTimeout time.Duration `group:"connect" default:"5s" help:"connect timeout"`
@@ -89,7 +91,47 @@ func (c *RunCmd) Run(ctx context.Context) (err error) {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	if len(envTmplMap) > 0 {
+	var secretDir string
+	if len(fileTmplMap) > 0 {
+		if c.DirKey != "" {
+			secretDir, err = os.MkdirTemp("", "pipesecret-*")
+			if err != nil {
+				return err
+			}
+			defer func() {
+				if err2 := os.RemoveAll(secretDir); err2 != nil && !errors.Is(err, fs.ErrNotExist) {
+					err = errors.Join(err, err2)
+				}
+			}()
+
+			values[c.DirKey] = secretDir
+		}
+
+		for k, tmpl := range fileTmplMap {
+			v, err := executeTemplate(tmpl, values)
+			if err != nil {
+				return err
+			}
+
+			var filename string
+			if secretDir != "" {
+				filename = filepath.Join(secretDir, k)
+			} else {
+				filename = k
+			}
+
+			if err := os.WriteFile(filename, []byte(v), 0o600); err != nil {
+				return err
+			}
+			defer func() {
+				if err2 := os.Remove(k); err2 != nil && !errors.Is(err, fs.ErrNotExist) {
+					err = errors.Join(err, err2)
+				}
+			}()
+		}
+	}
+
+	if len(envTmplMap) > 0 || secretDir != "" {
 		cmd.Env = cmd.Environ()
 		for k, tmpl := range envTmplMap {
 			v, err := executeTemplate(tmpl, values)
@@ -99,24 +141,8 @@ func (c *RunCmd) Run(ctx context.Context) (err error) {
 			slog.Debug("adding environment variable", "name", k, "value", v)
 			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 		}
-	}
 
-	if len(fileTmplMap) > 0 {
-		for k, tmpl := range fileTmplMap {
-			v, err := executeTemplate(tmpl, values)
-			if err != nil {
-				return err
-			}
-
-			if err := os.WriteFile(k, []byte(v), 0o600); err != nil {
-				return err
-			}
-			defer func() {
-				if err2 := os.Remove(k); err2 != nil && !errors.Is(err, fs.ErrNotExist) {
-					err = errors.Join(err, err2)
-				}
-			}()
-		}
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", c.DirKey, secretDir))
 	}
 
 	if err := cmd.Run(); err != nil {
