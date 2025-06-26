@@ -33,9 +33,9 @@ type RunCmd struct {
 	Query string `group:"query" required:"" default:"{\"username\": .fields[] | select(.id == \"username\").value, \"password\": .fields[] | select(.id == \"password\").value}" env:"PIPESECRET_QUERY" help:"query string for gojq"`
 
 	Stdin  string            `group:"inject" help:"inject secret to stdin if not empty. format: Go text/template string. example: {{.username}}{{\"\\n\"}}{{.password}}{{\"\\n\"}}"`
-	DirKey string            `group:"inject" help:"create temporary directory with random name for files which will be created --file. example: --dir-key=secret_dir --file=token.txt={{.username}};secret.txt={{.password}} --env=TOKEN_FILE={{.secret_dir}}/token.txt;SECRET_FILE={{.secret_dir}}/secret.txt"`
-	File   map[string]string `group:"inject" help:"inject secret in a temporary file, value format: NAME1=TEMPLATE1;NAME2=TEMPLATE2, example: token.txt={{.username}};secret.txt={{.password}}"`
-	Env    map[string]string `group:"inject" help:"inject secret with an environment variable, value format: NAME1=TEMPLATE1;NAME2=TEMPLATE2, example: TOKEN={{.username}};SECRET={{.password}}"`
+	DirKey string            `group:"inject" help:"create temporary directory with random name for files. example: --dir-key=secret_dir --file='token.txt={{.username}};secret.txt={{.password}}' --env='TOKEN_FILE={{.secret_dir}}/token.txt;SECRET_FILE={{.secret_dir}}/secret.txt'"`
+	File   map[string]string `group:"inject" help:"inject secret in a temporary file, example: --file='token.txt={{.username}};secret.txt={{.password}}'"`
+	Env    map[string]string `group:"inject" help:"inject secret with an environment variable, example: --env='TOKEN={{.username}};SECRET={{.password}}'"`
 
 	Socket         string        `group:"connect" required:"" default:"${default_socket_path}" env:"PIPESECRET_SOCKET" help:"unix socket path"`
 	ConnectTimeout time.Duration `group:"connect" default:"5s" help:"connect timeout"`
