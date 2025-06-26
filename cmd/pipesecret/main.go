@@ -29,7 +29,7 @@ var cli struct {
 
 type PassWithEnvCmd struct {
 	Item    string        `group:"query" required:"" help:"Item name in password manager to get"`
-	Query   string        `group:"query" required:"" default:"{\"username\": .fields[] | select(.id == \"username\").value, \"password\": .fields[] | select(.id == \"password\").value}" env:"PIPESECRET_QUERY" help:"query string for gojq"`
+	Query   string        `group:"query" required:"" default:"{\"PIPESECRET_USER\": .fields[] | select(.id == \"username\").value, \"PIPESECRET_PASS\": .fields[] | select(.id == \"password\").value}" env:"PIPESECRET_QUERY" help:"query string for gojq"`
 	Socket  string        `group:"connect" required:"" default:"${default_socket_path}" env:"PIPESECRET_SOCKET" help:"unix socket path"`
 	Timeout time.Duration `group:"connect" default:"5s" help:"connect timeout"`
 
