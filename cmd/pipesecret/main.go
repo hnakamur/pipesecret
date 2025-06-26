@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"runtime/debug"
 	"strings"
 	"text/template"
 	"time"
@@ -23,6 +24,7 @@ var cli struct {
 	PassWithEnv PassWithEnvCmd `cmd:"" help:"Run the specified command with passing secrets with environment variables. This subcommand is supposed to be executed on the remote server."`
 	RemoteServe RemoteServeCmd `cmd:"" help:"The remote server which is executed automatically by serve subcommand."`
 	Serve       ServeCmd       `cmd:"" help:"Run local server. This subcommand is supposed to be executed on the local machine."`
+	Version     VersionCmd     `cmd:"" help:"Show version and exit."`
 }
 
 type PassWithEnvCmd struct {
@@ -131,6 +133,20 @@ type ServeCmd struct {
 
 func (c *ServeCmd) Run(ctx context.Context) error {
 	return rpc.RunLocalServer(ctx, c.SSH, c.Host, c.Command, c.Op)
+}
+
+type VersionCmd struct{}
+
+func (c *VersionCmd) Run(ctx context.Context) error {
+	fmt.Println(Version())
+	return nil
+}
+
+func Version() string {
+	if info, ok := debug.ReadBuildInfo(); ok {
+		return info.Main.Version
+	}
+	return "(devel)"
 }
 
 func main() {
