@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -20,70 +21,52 @@ import (
 var cli struct {
 	Debug bool `help:"Enable debug mode."`
 
-	PassToStdin PassToStdinCmd `cmd:"" help:"Run the specified command with passing secrets to stdin. This subcommand is supposed to be executed on the remote server."`
-	PassWithEnv PassWithEnvCmd `cmd:"" help:"Run the specified command with passing secrets with environment variables. This subcommand is supposed to be executed on the remote server."`
+	Run         RunCmd         `cmd:"" help:"Run the specified command with injecting secrets. This subcommand is supposed to be executed on the remote server."`
 	RemoteServe RemoteServeCmd `cmd:"" help:"The remote server which is executed automatically by serve subcommand."`
 	Serve       ServeCmd       `cmd:"" help:"Run local server. This subcommand is supposed to be executed on the local machine."`
 	Version     VersionCmd     `cmd:"" help:"Show version and exit."`
 }
 
-type PassWithEnvCmd struct {
-	Item    string        `group:"query" required:"" help:"Item name in password manager to get"`
-	Query   string        `group:"query" required:"" default:"{\"PIPESECRET_USER\": .fields[] | select(.id == \"username\").value, \"PIPESECRET_PASS\": .fields[] | select(.id == \"password\").value}" env:"PIPESECRET_QUERY" help:"query string for gojq"`
-	Socket  string        `group:"connect" required:"" default:"${default_socket_path}" env:"PIPESECRET_SOCKET" help:"unix socket path"`
-	Timeout time.Duration `group:"connect" default:"5s" help:"connect timeout"`
+type RunCmd struct {
+	Item  string `group:"query" required:"" help:"Item name in password manager to get"`
+	Query string `group:"query" required:"" default:"{\"username\": .fields[] | select(.id == \"username\").value, \"password\": .fields[] | select(.id == \"password\").value}" env:"PIPESECRET_QUERY" help:"query string for gojq"`
+
+	Stdin string            `group:"inject" help:"inject secret to stdin if not empty. format: Go text/template string. example: {{.username}}{{\"\\n\"}}{{.password}}{{\"\\n\"}}"`
+	Env   map[string]string `group:"inject" help:"inject secret with an environment variable, value format: NAME1=TEMPLATE1;NAME2=TEMPLATE2, example: TOKEN={{.username}};SECRET={{.password}}"`
+	File  map[string]string `group:"inject" help:"inject secret in a temporary file, value format: NAME1=TEMPLATE1;NAME2=TEMPLATE2, example: token.txt={{.username}};secret.txt={{.password}}"`
+
+	Socket         string        `group:"connect" required:"" default:"${default_socket_path}" env:"PIPESECRET_SOCKET" help:"unix socket path"`
+	ConnectTimeout time.Duration `group:"connect" default:"5s" help:"connect timeout"`
 
 	Command string   `group:"exec" arg:"" help:"path to command to be executed"`
 	Args    []string `group:"exec" arg:"" optional:"" help:"arguments for the command to be executed"`
 }
 
-func (c *PassWithEnvCmd) Run(ctx context.Context) error {
-	result, err := rpc.GetQueryItem(ctx, c.Socket, c.Timeout, c.Item, c.Query)
-	if err != nil {
-		return err
+func (c *RunCmd) Run(ctx context.Context) (err error) {
+	if len(c.Stdin) == 0 && len(c.Env) == 0 && len(c.File) == 0 {
+		return errors.New("specify at least one of --stdin, --env, or --file")
 	}
+	slog.Debug("run subcommand", "len(Stdin)", len(c.Stdin), "len(Env)", len(c.Env), "len(File)", len(c.File))
 
-	values, ok := result.(map[string]any)
-	if !ok {
-		return errors.New("query result is not a JSON object")
-	}
-
-	cmd := exec.CommandContext(ctx, c.Command, c.Args...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Env = cmd.Environ()
-	for k, v := range values {
-		if s, ok := v.(string); ok {
-			slog.Debug("adding environment variable", "name", k, "value", s)
-			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, s))
+	var stdinTmpl *template.Template
+	if len(c.Stdin) > 0 {
+		stdinTmpl, err = parseTemplate(c.Stdin)
+		if err != nil {
+			return err
 		}
 	}
-	if err := cmd.Run(); err != nil {
-		return xerrors.Errorf("failed to run command: %s", err)
-	}
 
-	return nil
-}
-
-type PassToStdinCmd struct {
-	Item    string        `group:"query" required:"" help:"Item name in password manager to get"`
-	Query   string        `group:"query" required:"" default:"{\"PIPESECRET_USER\": .fields[] | select(.id == \"username\").value, \"PIPESECRET_PASS\": .fields[] | select(.id == \"password\").value}" env:"PIPESECRET_QUERY" help:"query string for gojq"`
-	Socket  string        `group:"connect" required:"" default:"${default_socket_path}" env:"PIPESECRET_SOCKET" help:"unix socket path"`
-	Timeout time.Duration `group:"connect" default:"5s" help:"connect timeout"`
-
-	Template string   `group:"exec" required:"" default:"{{.PIPESECRET_USER}}{{\"\\n\"}}{{.PIPESECRET_PASS}}{{\"\\n\"}}" help:"Go text/template string to format secrets to be passed to stdin."`
-	Command  string   `group:"exec" arg:"" help:"path to command to be executed"`
-	Args     []string `group:"exec" arg:"" optional:"" help:"arguments for the command to be executed"`
-}
-
-func (c *PassToStdinCmd) Run(ctx context.Context) error {
-	tmpl, err := template.New("template1").Parse(c.Template)
+	envTmplMap, err := parseTemplateMap(c.Env)
 	if err != nil {
 		return err
 	}
 
-	result, err := rpc.GetQueryItem(ctx, c.Socket, c.Timeout, c.Item, c.Query)
+	fileTmplMap, err := parseTemplateMap(c.File)
+	if err != nil {
+		return err
+	}
+
+	result, err := rpc.GetQueryItem(ctx, c.Socket, c.ConnectTimeout, c.Item, c.Query)
 	if err != nil {
 		return err
 	}
@@ -93,21 +76,82 @@ func (c *PassToStdinCmd) Run(ctx context.Context) error {
 		return errors.New("query result is not a JSON object")
 	}
 
-	var templateOutput strings.Builder
-	if err := tmpl.Execute(&templateOutput, values); err != nil {
-		return err
-	}
-	slog.Debug("rendered template", "templateOutput", templateOutput)
-
 	cmd := exec.CommandContext(ctx, c.Command, c.Args...)
-	cmd.Stdin = strings.NewReader(templateOutput.String())
+	if stdinTmpl != nil {
+		stdinText, err := executeTemplate(stdinTmpl, values)
+		if err != nil {
+			return err
+		}
+		cmd.Stdin = strings.NewReader(stdinText)
+	} else {
+		cmd.Stdin = os.Stdin
+	}
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+
+	if len(envTmplMap) > 0 {
+		cmd.Env = cmd.Environ()
+		for k, tmpl := range envTmplMap {
+			v, err := executeTemplate(tmpl, values)
+			if err != nil {
+				return err
+			}
+			slog.Debug("adding environment variable", "name", k, "value", v)
+			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+		}
+	}
+
+	if len(fileTmplMap) > 0 {
+		for k, tmpl := range fileTmplMap {
+			v, err := executeTemplate(tmpl, values)
+			if err != nil {
+				return err
+			}
+
+			if err := os.WriteFile(k, []byte(v), 0o600); err != nil {
+				return err
+			}
+			defer func() {
+				if err2 := os.Remove(k); err2 != nil && !errors.Is(err, fs.ErrNotExist) {
+					err = errors.Join(err, err2)
+				}
+			}()
+		}
+	}
+
 	if err := cmd.Run(); err != nil {
 		return xerrors.Errorf("failed to run command: %s", err)
 	}
 
 	return nil
+}
+
+func parseTemplate(tmpl string) (*template.Template, error) {
+	return template.New("").Parse(tmpl)
+}
+
+func parseTemplateMap(tmplMap map[string]string) (map[string]*template.Template, error) {
+	if len(tmplMap) == 0 {
+		return nil, nil
+	}
+
+	resultMap := make(map[string]*template.Template)
+	for k, v := range tmplMap {
+		tmpl, err := parseTemplate(v)
+		if err != nil {
+			return nil, err
+		}
+		resultMap[k] = tmpl
+	}
+	return resultMap, nil
+}
+
+func executeTemplate(tmpl *template.Template, values any) (string, error) {
+	var output strings.Builder
+	if err := tmpl.Execute(&output, values); err != nil {
+		return "", err
+	}
+	return output.String(), nil
 }
 
 type RemoteServeCmd struct {
