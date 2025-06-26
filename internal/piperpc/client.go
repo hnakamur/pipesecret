@@ -3,10 +3,12 @@ package piperpc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"time"
 
+	"github.com/hnakamur/pipesecret/internal/jsonrpc2debug"
 	"golang.org/x/exp/jsonrpc2"
 )
 
@@ -49,7 +51,8 @@ func (c *Client) Run(ctx context.Context, out io.Writer, in io.Reader) error {
 			if _, err := w.Write(ctx, req); err != nil {
 				return err
 			}
-			logger.DebugContext(ctx, "pipeClient sent heartbeat request", "reqID", req.ID)
+			logger.DebugContext(ctx, "pipeClient sent heartbeat request", "req",
+				jsonrpc2debug.DebugMarshalMessage{Msg: req})
 			respMsg, _, err := r.Read(ctx)
 			if err != nil {
 				return err
@@ -58,7 +61,8 @@ func (c *Client) Run(ctx context.Context, out io.Writer, in io.Reader) error {
 			if !ok {
 				return errors.New("expected a jsonrpc2 response")
 			}
-			logger.DebugContext(ctx, "pipeClient received heartbeat request", "resp", resp)
+			logger.DebugContext(ctx, "pipeClient received heartbeat request", "resp",
+				jsonrpc2debug.DebugMarshalMessage{Msg: resp})
 		case origReq := <-c.requestC:
 			origReqID := origReq.Request.ID
 			reqID++
@@ -68,11 +72,12 @@ func (c *Client) Run(ctx context.Context, out io.Writer, in io.Reader) error {
 				Method: origReq.Request.Method,
 				Params: origReq.Request.Params,
 			}
-			logger.DebugContext(ctx, "pipeClient writing request", "reqID", req.ID, "origReqID", origReqID)
 			if _, err := w.Write(ctx, req); err != nil {
 				return err
 			}
-			logger.DebugContext(ctx, "pipeClient written request", "reqID", req.ID, "origReqID", origReqID)
+			logger.DebugContext(ctx, "pipeClient written request",
+				"request", jsonrpc2debug.DebugMarshalMessage{Msg: req},
+				"origReqID", fmt.Sprintf("%v", origReqID.Raw()))
 
 			respMsg, _, err := r.Read(ctx)
 			if err != nil {
@@ -82,7 +87,8 @@ func (c *Client) Run(ctx context.Context, out io.Writer, in io.Reader) error {
 			if !ok {
 				return errors.New("expected a jsonrpc2 response")
 			}
-			logger.DebugContext(ctx, "pipeClient received response", "resp", resp)
+			logger.DebugContext(ctx, "pipeClient received response", "resp",
+				jsonrpc2debug.DebugMarshalMessage{Msg: resp})
 			resp.ID = origReqID
 			origReq.ResultC <- resp
 			logger.DebugContext(ctx, "pipeClient esnt response to resultC")

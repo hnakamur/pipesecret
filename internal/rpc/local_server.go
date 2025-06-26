@@ -44,8 +44,8 @@ func RunLocalServer(ctx context.Context, sshPath, host, remoteCommand, opExePath
 	go func() {
 		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
-			line := scanner.Text()
-			logger.DebugContext(ctx, "stderr from remote-serve", "line", line)
+			line := scanner.Bytes()
+			logger.DebugContext(ctx, "stderr from remote-serve", "line", RemoteServerJSONLog{JSON: line})
 		}
 		if err := scanner.Err(); err != nil && !errors.Is(err, fs.ErrClosed) {
 			logger.ErrorContext(ctx, "failed to read remote-serve stderr", "err", err)
@@ -87,4 +87,17 @@ func RunLocalServer(ctx context.Context, sshPath, host, remoteCommand, opExePath
 	}
 
 	return myerrors.Join(localErr, remoteErr)
+}
+
+type RemoteServerJSONLog struct {
+	JSON []byte
+}
+
+func (m RemoteServerJSONLog) LogValue() slog.Value {
+	var obj any
+	if err := json.Unmarshal(m.JSON, &obj); err != nil {
+		panic(err)
+	}
+
+	return slog.AnyValue(obj)
 }

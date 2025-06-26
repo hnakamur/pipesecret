@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 
+	"github.com/hnakamur/pipesecret/internal/jsonrpc2debug"
 	"golang.org/x/exp/jsonrpc2"
 )
 
@@ -36,22 +37,23 @@ func (c *Server) Run(ctx context.Context, in io.Reader, out io.Writer) error {
 			}
 			return err
 		}
-		logger.DebugContext(ctx, "written message", "reqMsg", reqMsg)
 		req, ok := reqMsg.(*jsonrpc2.Request)
 		if !ok {
 			return errors.New("expected a jsonrpc2 request")
 		}
+		logger.DebugContext(ctx, "pipeServer read request", "req",
+			jsonrpc2debug.DebugMarshalMessage{Msg: req})
 
 		result, resultErr := c.handler.Handle(ctx, req)
 		respMsg, err := jsonrpc2.NewResponse(req.ID, result, resultErr)
 		if err != nil {
 			return err
 		}
-		logger.DebugContext(ctx, "built message", "message", respMsg, "result", string(respMsg.Result))
 
 		if _, err := w.Write(ctx, respMsg); err != nil {
 			return err
 		}
-		logger.DebugContext(ctx, "written message", "message", respMsg, "result", string(respMsg.Result))
+		logger.DebugContext(ctx, "pipeServer written response", "resp",
+			jsonrpc2debug.DebugMarshalMessage{Msg: respMsg})
 	}
 }

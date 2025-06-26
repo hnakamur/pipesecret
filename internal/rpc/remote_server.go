@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hnakamur/pipesecret/internal/jsonrpc2debug"
 	"github.com/hnakamur/pipesecret/internal/myerrors"
 	"github.com/hnakamur/pipesecret/internal/piperpc"
 	"github.com/hnakamur/pipesecret/internal/unixsocketrpc"
@@ -87,7 +88,8 @@ func (s *RemoteServer) runUnixSocketServer(ctx context.Context) error {
 				logger.DebugContext(ctx, "unixSocketServer received ctx.Done", "err", ctx.Err())
 				return nil, ctx.Err()
 			case result := <-resultC:
-				logger.DebugContext(ctx, "unixSocketServer received result", "result", result, "result.Result", string(result.Result))
+				logger.DebugContext(ctx, "unixSocketServer received result",
+					"result", jsonrpc2debug.DebugMarshalMessage{Msg: result})
 				return result.Result, result.Error
 			}
 		default:

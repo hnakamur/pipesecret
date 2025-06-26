@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/hnakamur/pipesecret/internal/myerrors"
 	"golang.org/x/exp/jsonrpc2"
 )
 
@@ -61,12 +62,10 @@ func (s *Server) Run(ctx context.Context, handler jsonrpc2.Handler, shutdownMeth
 		<-time.After(s.shutdownGracePeriod)
 		if err := s.listener.Close(); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			closeErr = err
-			log.Printf("closeErr=%v", closeErr)
 		}
 	}()
 	if err := server.Wait(); err != nil || closeErr != nil {
-		log.Printf("waitErr=%v", err)
-		return errors.Join(err, closeErr)
+		return myerrors.Join(err, closeErr)
 	}
 	return nil
 }
