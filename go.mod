@@ -10,6 +10,8 @@ require (
 )
 
 require (
+	github.com/GitRowin/orderedmapjson v0.5.0 // indirect
+	github.com/elliotchance/orderedmap/v3 v3.1.0 // indirect
 	github.com/itchyny/timefmt-go v0.1.6 // indirect
 	golang.org/x/exp/event v0.0.0-20220217172124-1812c5b45e43 // indirect
 )

@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"os/signal"
 
+	"github.com/GitRowin/orderedmapjson"
 	"github.com/hnakamur/pipesecret/internal"
 	"github.com/hnakamur/pipesecret/internal/myerrors"
 	"github.com/hnakamur/pipesecret/internal/piperpc"
@@ -94,7 +95,7 @@ type RemoteServerJSONLog struct {
 }
 
 func (m RemoteServerJSONLog) LogValue() slog.Value {
-	var obj any
+	var obj *orderedmapjson.AnyOrderedMap
 	if err := json.Unmarshal(m.JSON, &obj); err != nil {
 		panic(err)
 	}
